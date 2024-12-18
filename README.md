@@ -1,8 +1,7 @@
 1. Thiết lập CORS để kết nối API BE với FE:
 from fastapi.middleware.cors import CORSMiddleware
 
-
-   app.add_middleware(
+  app.add_middleware(
     CORSMiddleware,
    
     allow_origins=["http://localhost:3000"],
@@ -14,8 +13,10 @@ from fastapi.middleware.cors import CORSMiddleware
     allow_headers=["*"],
 )
 
-2.Clone Git
+Clone Git
 
-3. npm i
+npm i
 
-4. npm start
+cd react-app
+
+npm start
