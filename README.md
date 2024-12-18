@@ -1,4 +1,5 @@
 1. Thiết lập CORS để kết nối API BE với FE:
+
 from fastapi.middleware.cors import CORSMiddleware
 
   app.add_middleware(
