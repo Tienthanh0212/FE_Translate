@@ -13,6 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
    
     allow_headers=["*"],
 )
+Thêm package ở BE : pip install PyMuPDF
 
 Clone Git
 
