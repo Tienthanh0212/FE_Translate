@@ -18,6 +18,8 @@ import {
   Description as DescriptionIcon,
   CloudUpload as CloudUploadIcon,
 } from "@mui/icons-material";
+import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
+import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 
 const TranslatorApp = () => {
   const languages = [
@@ -53,81 +55,85 @@ const TranslatorApp = () => {
     "image/png",
   ];
 
-  const handleOCRResponse = (text) => {
-    if (text) {
-      setDocumentTabSourceText(text);
-      setShowUploadInterface(false);
-    }
-  };
-
   const processOCR = async (file) => {
     if (!file) return;
-
+  
     setIsProcessing(true);
     setDocumentTabTranslatedText("Đang xử lý...");
     setPageTexts([]);
     setCurrentPage(0);
-
+    setShowUploadInterface(false);
+  
     const formData = new FormData();
     formData.append("file", file);
-
+  
     try {
       const response = await fetch("http://localhost:8069/ocr/", {
         method: "POST",
         body: formData,
       });
-
+  
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
-
-      // Stream the response to handle page-by-page text extraction
+  
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
-      const pageTextResults = [];
       let buffer = "";
-
+      let pageCount = 0;  // Đếm số trang local
+  
       while (true) {
         const { done, value } = await reader.read();
+        
         if (done) break;
-
+  
         const chunk = decoder.decode(value, { stream: true });
-        buffer += chunk;
-
-        // Split buffer by page delimiter
-        const pageDelimiter = "---PAGE_BREAK---";
-        const pages = buffer.split(pageDelimiter);
-
-        // Process complete pages
-        while (pages.length > 1) {
-          const pageText = pages.shift().trim();
-          if (pageText) {
-            pageTextResults.push(pageText);
+        
+        if (chunk.startsWith('data: ')) {
+          try {
+            const jsonStr = chunk.substring(6);
+            const data = JSON.parse(jsonStr);
+  
+            if (data.text) {
+              // Tự tăng số trang
+              const currentPageIndex = pageCount;
+              pageCount++;
+  
+              // Cập nhật danh sách trang
+              setPageTexts(prev => {
+                const newPages = [...prev];
+                newPages[currentPageIndex] = data.text;
+                return newPages;
+              });
+  
+              // Chỉ hiển thị trang đầu tiên tự động
+              if (currentPageIndex === 0) {
+                setCurrentPage(0);
+                setDocumentTabSourceText(data.text);
+              }
+            }
+          } catch (e) {
+            console.error("Error parsing JSON:", e, chunk);
           }
         }
-
-        // Keep the last (potentially incomplete) page in buffer
-        buffer = pages[0];
       }
-
-      // Add any remaining text in buffer
-      if (buffer.trim()) {
-        pageTextResults.push(buffer.trim());
-      }
-
-      // Update state with extracted page texts
-      setPageTexts(pageTextResults);
-      setDocumentTabSourceText(pageTextResults[0] || "");
-      setShowUploadInterface(false);
-      setCurrentPage(0);
+  
     } catch (error) {
-      console.error("Error processing file:", error);
+      console.error("Error in OCR process:", error);
       setDocumentTabSourceText("Đã xảy ra lỗi: " + error.message);
     } finally {
       setIsProcessing(false);
-      setDocumentTabTranslatedText("");
     }
   };
+  const handlePageNavigation = (pageIndex) => {
+    
+    
+    if (pageIndex >= 0 && pageIndex < pageTexts.length) {
+      setCurrentPage(pageIndex);
+      setDocumentTabSourceText(pageTexts[pageIndex]);
+    }
+  };
+  
 
   const handleDrag = (e) => {
     if (!e) return;
@@ -146,6 +152,71 @@ const TranslatorApp = () => {
     }
     return true;
   };
+  const renderPagination = () => (
+    <Grid item xs={12} sx={{ mt: 3, borderTop: 1, borderColor: 'divider' }}>
+      <Box sx={{ 
+        display: "flex", 
+        justifyContent: "center", 
+        alignItems: "center", 
+        gap: 3,
+        py: 2
+      }}>
+        <Button
+          variant="outlined"
+          disabled={currentPage === 0}
+          onClick={() => handlePageNavigation(currentPage - 1)}
+          startIcon={<ArrowBackIcon/>}
+          sx={{
+            textTransform: 'none',
+            minWidth: '120px'
+          }}
+        >
+          Trang trước
+        </Button>
+  
+        <Box sx={{ 
+          display: 'flex', 
+          alignItems: 'center', 
+          gap: 1,
+          px: 2,
+          py: 1,
+          borderRadius: 1,
+          bgcolor: 'grey.100'
+        }}>
+          {isProcessing ? (
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <Typography variant="body1" component="span">
+                Trang {pageTexts.length}
+              </Typography>
+              <CircularProgress size={16} />
+            </Box>
+          ) : (
+            <>
+              <Typography variant="body1" component="span">
+                Trang {currentPage + 1}
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                trên {pageTexts.length}
+              </Typography>
+            </>
+          )}
+        </Box>
+  
+        <Button
+          variant="outlined"
+          disabled={currentPage === pageTexts.length - 1}
+          onClick={() => handlePageNavigation(currentPage + 1)}
+          endIcon={<ArrowForwardIcon/>}
+          sx={{
+            textTransform: 'none',
+            minWidth: '120px'
+          }}
+        >
+          Trang sau
+        </Button>
+      </Box>
+    </Grid>
+  );
 
   const handleDrop = (e) => {
     if (!e) return;
@@ -167,12 +238,7 @@ const TranslatorApp = () => {
       processOCR(file);
     }
   };
-  const handlePageNavigation = (pageIndex) => {
-    if (pageIndex >= 0 && pageIndex < pageTexts.length) {
-      setCurrentPage(pageIndex);
-      setDocumentTabSourceText(pageTexts[pageIndex]);
-    }
-  };
+
   const renderLanguageSelectors = () => (
     <Box
       sx={{
@@ -327,74 +393,80 @@ const TranslatorApp = () => {
           Tải lên tài liệu khác
         </Button>
       </Box>
-
-      <Grid container>
-        <Grid item xs={6} sx={{ p: 2, borderRight: 1, borderColor: "divider" }}>
+  
+      <Grid container spacing={2}>
+        <Grid item xs={6}>
           <TextField
             fullWidth
             multiline
-            rows={10}
-            placeholder="Nhập văn bản"
+            rows={12}
+            placeholder="Nội dung văn bản"
             variant="outlined"
             value={documentTabSourceText}
             onChange={(e) => setDocumentTabSourceText(e.target.value)}
-          />
-          <Box
-            sx={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              mt: 2,
+            InputProps={{
+              readOnly: isProcessing,
             }}
-          >
+          />
+          <Box sx={{ mt: 1, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <Typography variant="body2" color="text.secondary">
               {documentTabSourceText.length} / 5000
             </Typography>
-            {pageTexts.length > 1 && (
-              <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
-                <Button
-                  variant="outlined"
-                  disabled={currentPage === 0}
-                  onClick={() => handlePageNavigation(currentPage - 1)}
-                >
-                  Trang trước
-                </Button>
-                <Typography>
-                  Trang {currentPage + 1} / {pageTexts.length}
-                </Typography>
-                <Button
-                  variant="outlined"
-                  disabled={currentPage === pageTexts.length - 1}
-                  onClick={() => handlePageNavigation(currentPage + 1)}
-                >
-                  Trang sau
-                </Button>
-              </Box>
+            {isProcessing && (
+              <Typography variant="body2" color="primary">
+                Đang xử lý trang {pageTexts.length}...
+              </Typography>
             )}
           </Box>
         </Grid>
-
-        <Grid item xs={6} sx={{ p: 2, bgcolor: "grey.50" }}>
+  
+        <Grid item xs={6}>
           <Box
             sx={{
-              minHeight: "230px",
+              height: '100%',
+              minHeight: '300px',
               p: 2,
-              bgcolor: "background.paper",
+              bgcolor: 'grey.50',
               borderRadius: 1,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
             }}
           >
             {isProcessing ? (
               <CircularProgress />
             ) : (
-              <Typography variant="body1" sx={{ textAlign: "center" }}>
+              <Typography variant="body1">
                 {documentTabTranslatedText || "Chưa có kết quả dịch"}
               </Typography>
             )}
           </Box>
         </Grid>
+  
+        {pageTexts.length > 0 && (
+          <Grid item xs={12} sx={{ mt: 2, borderTop: 1, borderColor: 'divider', pt: 2 }}>
+            <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 2 }}>
+              <Button
+                disabled={currentPage === 0}
+                onClick={() => handlePageNavigation(currentPage - 1)}
+                startIcon={<ArrowBackIcon />}
+              >
+                Trang trước
+              </Button>
+              <Typography>
+                Trang {currentPage + 1} / {pageTexts.length}
+                {isProcessing && "..."}
+              </Typography>
+              <Button
+                disabled={currentPage >= pageTexts.length - 1}
+                onClick={() => handlePageNavigation(currentPage + 1)}
+                endIcon={<ArrowForwardIcon />}
+              >
+                Trang sau
+              </Button>
+            </Box>
+          </Grid>
+        )}
       </Grid>
     </Box>
   );
