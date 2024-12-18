@@ -20,6 +20,7 @@ import {
 } from "@mui/icons-material";
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
+import CancelIcon from '@mui/icons-material/Cancel';
 
 const TranslatorApp = () => {
   const languages = [
@@ -38,6 +39,8 @@ const TranslatorApp = () => {
   const [textTabSourceText, setTextTabSourceText] = useState("");
   const [textTabTranslatedText, setTextTabTranslatedText] = useState("");
   const [documentTabSourceText, setDocumentTabSourceText] = useState("");
+  const [uploadedFiles, setUploadedFiles] = useState([]);
+  const [currentFileIndex, setCurrentFileIndex] = useState(0);
   const [documentTabTranslatedText, setDocumentTabTranslatedText] =
     useState("");
   const [dragActive, setDragActive] = useState(false);
@@ -46,6 +49,7 @@ const TranslatorApp = () => {
   const [pageTexts, setPageTexts] = useState([]);
   const [currentPage, setCurrentPage] = useState(0);
   const fileInputRef = useRef(null);
+  const abortControllerRef = useRef(null);
 
   const SUPPORTED_FILE_TYPES = [
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -54,10 +58,30 @@ const TranslatorApp = () => {
     "image/jpeg",
     "image/png",
   ];
+  const validateFiles = (files) => {
+    const validFiles = Array.from(files).filter(file => 
+      SUPPORTED_FILE_TYPES.includes(file.type)
+    );
+
+    if (validFiles.length !== files.length) {
+      alert("Một số file không được hỗ trợ. Chỉ chấp nhận .docx, .pdf, hoặc ảnh");
+    }
+
+    return validFiles;
+  };
+  
+  const cancelProcessing = () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      setIsProcessing(false);
+      setDocumentTabTranslatedText("Đã hủy quá trình dịch");
+    }
+  };
 
   const processOCR = async (file) => {
     if (!file) return;
   
+    abortControllerRef.current = new AbortController();
     setIsProcessing(true);
     setDocumentTabTranslatedText("Đang xử lý...");
     setPageTexts([]);
@@ -71,6 +95,7 @@ const TranslatorApp = () => {
       const response = await fetch("http://localhost:8069/ocr/", {
         method: "POST",
         body: formData,
+        signal: abortControllerRef.current.signal
       });
   
       if (!response.ok) {
@@ -79,8 +104,7 @@ const TranslatorApp = () => {
   
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
-      let buffer = "";
-      let pageCount = 0;  // Đếm số trang local
+      let pageCount = 0;
   
       while (true) {
         const { done, value } = await reader.read();
@@ -95,18 +119,15 @@ const TranslatorApp = () => {
             const data = JSON.parse(jsonStr);
   
             if (data.text) {
-              // Tự tăng số trang
               const currentPageIndex = pageCount;
               pageCount++;
   
-              // Cập nhật danh sách trang
               setPageTexts(prev => {
                 const newPages = [...prev];
                 newPages[currentPageIndex] = data.text;
                 return newPages;
               });
   
-              // Chỉ hiển thị trang đầu tiên tự động
               if (currentPageIndex === 0) {
                 setCurrentPage(0);
                 setDocumentTabSourceText(data.text);
@@ -119,8 +140,12 @@ const TranslatorApp = () => {
       }
   
     } catch (error) {
-      console.error("Error in OCR process:", error);
-      setDocumentTabSourceText("Đã xảy ra lỗi: " + error.message);
+      if (error.name === 'AbortError') {
+        console.log('OCR processing was cancelled');
+      } else {
+        console.error("Error in OCR process:", error);
+        setDocumentTabSourceText("Đã xảy ra lỗi: " + error.message);
+      }
     } finally {
       setIsProcessing(false);
     }
@@ -141,7 +166,6 @@ const TranslatorApp = () => {
     e.stopPropagation();
     setDragActive(e.type === "dragenter" || e.type === "dragover");
   };
-
   const validateFile = (file) => {
     if (!file) return false;
     if (!SUPPORTED_FILE_TYPES.includes(file.type)) {
@@ -152,90 +176,41 @@ const TranslatorApp = () => {
     }
     return true;
   };
-  const renderPagination = () => (
-    <Grid item xs={12} sx={{ mt: 3, borderTop: 1, borderColor: 'divider' }}>
-      <Box sx={{ 
-        display: "flex", 
-        justifyContent: "center", 
-        alignItems: "center", 
-        gap: 3,
-        py: 2
-      }}>
-        <Button
-          variant="outlined"
-          disabled={currentPage === 0}
-          onClick={() => handlePageNavigation(currentPage - 1)}
-          startIcon={<ArrowBackIcon/>}
-          sx={{
-            textTransform: 'none',
-            minWidth: '120px'
-          }}
-        >
-          Trang trước
-        </Button>
-  
-        <Box sx={{ 
-          display: 'flex', 
-          alignItems: 'center', 
-          gap: 1,
-          px: 2,
-          py: 1,
-          borderRadius: 1,
-          bgcolor: 'grey.100'
-        }}>
-          {isProcessing ? (
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              <Typography variant="body1" component="span">
-                Trang {pageTexts.length}
-              </Typography>
-              <CircularProgress size={16} />
-            </Box>
-          ) : (
-            <>
-              <Typography variant="body1" component="span">
-                Trang {currentPage + 1}
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                trên {pageTexts.length}
-              </Typography>
-            </>
-          )}
-        </Box>
-  
-        <Button
-          variant="outlined"
-          disabled={currentPage === pageTexts.length - 1}
-          onClick={() => handlePageNavigation(currentPage + 1)}
-          endIcon={<ArrowForwardIcon/>}
-          sx={{
-            textTransform: 'none',
-            minWidth: '120px'
-          }}
-        >
-          Trang sau
-        </Button>
-      </Box>
-    </Grid>
-  );
 
   const handleDrop = (e) => {
-    if (!e) return;
     e.preventDefault();
     e.stopPropagation();
     setDragActive(false);
 
-    const file = e?.dataTransfer?.files?.[0];
-    if (file && validateFile(file)) {
-      setUploadedFile(file);
-      processOCR(file);
+    const files = e?.dataTransfer?.files;
+    if (files) {
+      const validFiles = validateFiles(files);
+      setUploadedFiles(validFiles);
+      
+      if (validFiles.length > 0) {
+        processOCR(validFiles[0]);
+        setCurrentFileIndex(0);
+      }
     }
   };
 
   const handleFileInput = (e) => {
-    const file = e?.target?.files?.[0];
-    if (file && validateFile(file)) {
-      setUploadedFile(file);
-      processOCR(file);
+    const files = e?.target?.files;
+    if (files) {
+      const validFiles = validateFiles(files);
+      setUploadedFiles(validFiles);
+      
+      if (validFiles.length > 0) {
+        processOCR(validFiles[0]);
+        setCurrentFileIndex(0);
+      }
+    }
+  };
+  const handleNextFile = () => {
+    const nextIndex = currentFileIndex + 1;
+    if (nextIndex < uploadedFiles.length) {
+      setCurrentFileIndex(nextIndex);
+      processOCR(uploadedFiles[nextIndex]);
     }
   };
 
@@ -282,6 +257,7 @@ const TranslatorApp = () => {
         ref={fileInputRef}
         type="file"
         accept=".docx,.pdf,.jpg,.jpeg,.png"
+        multiple
         style={{ display: "none" }}
         onChange={handleFileInput}
       />
@@ -306,17 +282,17 @@ const TranslatorApp = () => {
         )}
       </Box>
 
-      {uploadedFile ? (
+      {uploadedFiles.length > 0 ? (
         <Typography variant="h6" sx={{ textAlign: "center" }}>
-          Đã chọn: {uploadedFile.name}
+          Đã chọn: {uploadedFiles.length} tệp
         </Typography>
       ) : (
         <>
           <Typography variant="h6" sx={{ textAlign: "center" }}>
-            Kéo và thả
+            Kéo và thả nhiều tệp
           </Typography>
           <Typography sx={{ textAlign: "center", mb: 2 }}>
-            Hoặc chọn một tệp
+            Hoặc chọn một hoặc nhiều tệp
           </Typography>
         </>
       )}
@@ -378,20 +354,36 @@ const TranslatorApp = () => {
         }}
       >
         <Typography variant="h6">
-          Tài liệu đã tải lên: {uploadedFile?.name}
+          Tài liệu đã tải lên: {uploadedFiles[currentFileIndex]?.name}
         </Typography>
-        <Button
-          variant="outlined"
-          startIcon={<CloudUploadIcon />}
-          onClick={() => setShowUploadInterface(true)}
-          sx={{
-            textTransform: "none",
-            color: "#1967D2",
-            borderColor: "#1967D2",
-          }}
-        >
-          Tải lên tài liệu khác
-        </Button>
+        <Box sx={{ display: 'flex', gap: 2 }}>
+          {isProcessing && (
+            <Button
+              variant="outlined"
+              color="error"
+              startIcon={<CancelIcon />}
+              onClick={cancelProcessing}
+              sx={{ textTransform: 'none' }}
+            >
+              Ngắt dịch
+            </Button>
+          )}
+          <Button
+            variant="outlined"
+            startIcon={<CloudUploadIcon />}
+            onClick={() => {
+              setShowUploadInterface(true);
+              setUploadedFiles([]);
+            }}
+            sx={{
+              textTransform: "none",
+              color: "#1967D2",
+              borderColor: "#1967D2",
+            }}
+          >
+            Tải lên tài liệu khác
+          </Button>
+        </Box>
       </Box>
   
       <Grid container spacing={2}>
@@ -463,6 +455,34 @@ const TranslatorApp = () => {
                 endIcon={<ArrowForwardIcon />}
               >
                 Trang sau
+              </Button>
+            </Box>
+          </Grid>
+        )}
+  
+        {uploadedFiles.length > 1 && (
+          <Grid item xs={12} sx={{ mt: 2, borderTop: 1, borderColor: 'divider', pt: 2 }}>
+            <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 2 }}>
+              <Button
+                disabled={currentFileIndex === 0}
+                onClick={() => {
+                  const prevIndex = currentFileIndex - 1;
+                  setCurrentFileIndex(prevIndex);
+                  processOCR(uploadedFiles[prevIndex]);
+                }}
+                startIcon={<ArrowBackIcon />}
+              >
+                Tệp trước
+              </Button>
+              <Typography>
+                Tệp {currentFileIndex + 1} / {uploadedFiles.length}
+              </Typography>
+              <Button
+                disabled={currentFileIndex >= uploadedFiles.length - 1}
+                onClick={handleNextFile}
+                endIcon={<ArrowForwardIcon />}
+              >
+                Tệp sau
               </Button>
             </Box>
           </Grid>
