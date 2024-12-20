@@ -44,7 +44,6 @@ const TranslatorApp = () => {
   const [documentTabTranslatedText, setDocumentTabTranslatedText] =
     useState("");
   const [dragActive, setDragActive] = useState(false);
-  const [uploadedFile, setUploadedFile] = useState(null);
   const [showUploadInterface, setShowUploadInterface] = useState(true);
   const [pageTexts, setPageTexts] = useState([]);
   const [currentPage, setCurrentPage] = useState(0);
@@ -165,16 +164,6 @@ const TranslatorApp = () => {
     e.preventDefault();
     e.stopPropagation();
     setDragActive(e.type === "dragenter" || e.type === "dragover");
-  };
-  const validateFile = (file) => {
-    if (!file) return false;
-    if (!SUPPORTED_FILE_TYPES.includes(file.type)) {
-      alert(
-        "Định dạng file không được hỗ trợ. Vui lòng sử dụng .docx, .pdf, hoặc ảnh"
-      );
-      return false;
-    }
-    return true;
   };
 
   const handleDrop = (e) => {
