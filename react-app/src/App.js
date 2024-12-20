@@ -91,7 +91,7 @@ const TranslatorApp = () => {
     formData.append("file", file);
   
     try {
-      const response = await fetch("http://localhost:8010/ocr/", {
+      const response = await fetch("http://123.24.142.99:8010/ocr/", {
         method: "POST",
         body: formData,
         signal: abortControllerRef.current.signal
