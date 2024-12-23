@@ -77,9 +77,9 @@ const TranslatorApp = () => {
     }
   };
 
-  let buffer = ''; // Bộ nhớ đệm để xử lý stream
+  let buffer = ''; 
 
-const processOCR = async (file) => {
+  const processOCR = async (file) => {
     if (!file) return;
 
     abortControllerRef.current = new AbortController();
@@ -88,6 +88,7 @@ const processOCR = async (file) => {
     setPageTexts([]);
     setCurrentPage(0);
     setShowUploadInterface(false);
+    setDocumentTabSourceText(""); 
 
     const formData = new FormData();
     formData.append("file", file);
@@ -111,26 +112,24 @@ const processOCR = async (file) => {
             if (done) break;
 
             buffer += decoder.decode(value, { stream: true });
-
-            // Xử lý từng dòng JSON hoàn chỉnh
+            
             let boundaryIndex;
             while ((boundaryIndex = buffer.indexOf('\n')) >= 0) {
                 const jsonStr = buffer.slice(0, boundaryIndex).trim();
-                buffer = buffer.slice(boundaryIndex + 1); // Loại bỏ phần đã xử lý
+                buffer = buffer.slice(boundaryIndex + 1); 
 
                 if (jsonStr.startsWith('data: ')) {
                     try {
                         const data = JSON.parse(jsonStr.substring(6));
-                       
-
                         if (data.text) {
-                            const currentPageIndex = pageTexts.length;
-                            setPageTexts((prev) => [...prev, data.text]);
-
-                            if (currentPageIndex === 0) {
-                                setCurrentPage(0);
-                                setDocumentTabSourceText(data.text);
-                            }
+                            setPageTexts(prev => {
+                                const newPageTexts = [...prev, data.text];
+                              
+                                if (newPageTexts.length - 1 === currentPage) {
+                                    setDocumentTabSourceText(data.text);
+                                }
+                                return newPageTexts;
+                            });
                         }
                     } catch (e) {
                         console.error("Error parsing JSON:", e, jsonStr);
