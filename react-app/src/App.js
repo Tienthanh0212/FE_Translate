@@ -77,78 +77,78 @@ const TranslatorApp = () => {
     }
   };
 
-  const processOCR = async (file) => {
+  let buffer = ''; // Bộ nhớ đệm để xử lý stream
+
+const processOCR = async (file) => {
     if (!file) return;
-  
+
     abortControllerRef.current = new AbortController();
     setIsProcessing(true);
     setDocumentTabTranslatedText("Đang xử lý...");
     setPageTexts([]);
     setCurrentPage(0);
     setShowUploadInterface(false);
-  
+
     const formData = new FormData();
     formData.append("file", file);
-  
+
     try {
-      const response = await fetch("http://123.24.142.99:8010/ocr/", {
-        method: "POST",
-        body: formData,
-        signal: abortControllerRef.current.signal
-      });
-  
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-  
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let pageCount = 0;
-  
-      while (true) {
-        const { done, value } = await reader.read();
-        
-        if (done) break;
-  
-        const chunk = decoder.decode(value, { stream: true });
-        
-        if (chunk.startsWith('data: ')) {
-          try {
-            const jsonStr = chunk.substring(6);
-            const data = JSON.parse(jsonStr);
-  
-            if (data.text) {
-              const currentPageIndex = pageCount;
-              pageCount++;
-  
-              setPageTexts(prev => {
-                const newPages = [...prev];
-                newPages[currentPageIndex] = data.text;
-                return newPages;
-              });
-  
-              if (currentPageIndex === 0) {
-                setCurrentPage(0);
-                setDocumentTabSourceText(data.text);
-              }
-            }
-          } catch (e) {
-            console.error("Error parsing JSON:", e, chunk);
-          }
+        const response = await fetch("http://123.24.142.99:8010/ocr/", {
+            method: "POST",
+            body: formData,
+            signal: abortControllerRef.current.signal
+        });
+
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
         }
-      }
-  
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            buffer += decoder.decode(value, { stream: true });
+
+            // Xử lý từng dòng JSON hoàn chỉnh
+            let boundaryIndex;
+            while ((boundaryIndex = buffer.indexOf('\n')) >= 0) {
+                const jsonStr = buffer.slice(0, boundaryIndex).trim();
+                buffer = buffer.slice(boundaryIndex + 1); // Loại bỏ phần đã xử lý
+
+                if (jsonStr.startsWith('data: ')) {
+                    try {
+                        const data = JSON.parse(jsonStr.substring(6));
+                        console.log(data);
+
+                        if (data.text) {
+                            const currentPageIndex = pageTexts.length;
+                            setPageTexts((prev) => [...prev, data.text]);
+
+                            if (currentPageIndex === 0) {
+                                setCurrentPage(0);
+                                setDocumentTabSourceText(data.text);
+                            }
+                        }
+                    } catch (e) {
+                        console.error("Error parsing JSON:", e, jsonStr);
+                    }
+                }
+            }
+        }
     } catch (error) {
-      if (error.name === 'AbortError') {
-        console.log('OCR processing was cancelled');
-      } else {
-        console.error("Error in OCR process:", error);
-        setDocumentTabSourceText("Đã xảy ra lỗi: " + error.message);
-      }
+        if (error.name === 'AbortError') {
+            console.log('OCR processing was cancelled');
+        } else {
+            console.error("Error in OCR process:", error);
+            setDocumentTabSourceText("Đã xảy ra lỗi: " + error.message);
+        }
     } finally {
-      setIsProcessing(false);
+        setIsProcessing(false);
     }
-  };
+};
   const handlePageNavigation = (pageIndex) => {
     
     
