@@ -121,7 +121,7 @@ const processOCR = async (file) => {
                 if (jsonStr.startsWith('data: ')) {
                     try {
                         const data = JSON.parse(jsonStr.substring(6));
-                        console.log(data);
+                       
 
                         if (data.text) {
                             const currentPageIndex = pageTexts.length;
