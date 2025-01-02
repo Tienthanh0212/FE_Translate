@@ -23,7 +23,8 @@ import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import CancelIcon from '@mui/icons-material/Cancel';
 
 const TranslatorApp = () => {
-  const languages = [
+  // Languages for translation
+  const translationLanguages = [
     { code: "vi", name: "Tiếng Việt" },
     { code: "en", name: "Tiếng Anh" },
     { code: "zh", name: "Tiếng Trung" },
@@ -32,8 +33,18 @@ const TranslatorApp = () => {
     { code: "fr", name: "Tiếng Pháp" },
     { code: "de", name: "Tiếng Đức" },
   ];
+
+  // Languages for OCR
+  const ocrLanguages = [
+    { code: "en", name: "Tiếng Anh" },
+    { code: "ch", name: "Tiếng Trung Giản Thể" },
+    { code: "korean", name: "Tiếng Hàn" },
+  
+  ];
+
   const [tabValue, setTabValue] = useState(0);
   const [targetLanguage, setTargetLanguage] = useState("en");
+  const [ocrLanguage, setOcrLanguage] = useState("en");
   const [isProcessing, setIsProcessing] = useState(false);
 
   const [textTabSourceText, setTextTabSourceText] = useState("");
@@ -41,8 +52,7 @@ const TranslatorApp = () => {
   const [documentTabSourceText, setDocumentTabSourceText] = useState("");
   const [uploadedFiles, setUploadedFiles] = useState([]);
   const [currentFileIndex, setCurrentFileIndex] = useState(0);
-  const [documentTabTranslatedText, setDocumentTabTranslatedText] =
-    useState("");
+  const [documentTabTranslatedText, setDocumentTabTranslatedText] = useState("");
   const [dragActive, setDragActive] = useState(false);
   const [showUploadInterface, setShowUploadInterface] = useState(true);
   const [pageTexts, setPageTexts] = useState([]);
@@ -57,6 +67,7 @@ const TranslatorApp = () => {
     "image/jpeg",
     "image/png",
   ];
+
   const validateFiles = (files) => {
     const validFiles = Array.from(files).filter(file => 
       SUPPORTED_FILE_TYPES.includes(file.type)
@@ -68,7 +79,7 @@ const TranslatorApp = () => {
 
     return validFiles;
   };
-  
+
   const cancelProcessing = () => {
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
@@ -77,7 +88,7 @@ const TranslatorApp = () => {
     }
   };
 
-  let buffer = ''; 
+  let buffer = '';
 
   const processOCR = async (file) => {
     if (!file) return;
@@ -94,14 +105,23 @@ const TranslatorApp = () => {
     formData.append("file", file);
 
     try {
-        const response = await fetch("http://123.24.142.99:8010/ocr/", {
+        const url = new URL('http://localhost:8069/ocr/');
+        url.searchParams.append('lang', ocrLanguage);
+
+        console.log("Sending request to:", url.toString());
+
+        const response = await fetch(url, {
             method: "POST",
             body: formData,
-            signal: abortControllerRef.current.signal
+            signal: abortControllerRef.current.signal,
         });
 
+        console.log("Response status:", response.status);
+
         if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
+            const errorData = await response.json();
+            console.error("Backend error:", errorData);
+            throw new Error(errorData.detail || "An error occurred during OCR processing");
         }
 
         const reader = response.body.getReader();
@@ -112,19 +132,20 @@ const TranslatorApp = () => {
             if (done) break;
 
             buffer += decoder.decode(value, { stream: true });
-            
+
             let boundaryIndex;
             while ((boundaryIndex = buffer.indexOf('\n')) >= 0) {
                 const jsonStr = buffer.slice(0, boundaryIndex).trim();
-                buffer = buffer.slice(boundaryIndex + 1); 
+                buffer = buffer.slice(boundaryIndex + 1);
 
                 if (jsonStr.startsWith('data: ')) {
                     try {
                         const data = JSON.parse(jsonStr.substring(6));
+                        console.log("Parsed data:", data);
+
                         if (data.text) {
-                            setPageTexts(prev => {
+                            setPageTexts((prev) => {
                                 const newPageTexts = [...prev, data.text];
-                              
                                 if (newPageTexts.length - 1 === currentPage) {
                                     setDocumentTabSourceText(data.text);
                                 }
@@ -148,15 +169,14 @@ const TranslatorApp = () => {
         setIsProcessing(false);
     }
 };
+
+
   const handlePageNavigation = (pageIndex) => {
-    
-    
     if (pageIndex >= 0 && pageIndex < pageTexts.length) {
       setCurrentPage(pageIndex);
       setDocumentTabSourceText(pageTexts[pageIndex]);
     }
   };
-  
 
   const handleDrag = (e) => {
     if (!e) return;
@@ -194,6 +214,7 @@ const TranslatorApp = () => {
       }
     }
   };
+
   const handleNextFile = () => {
     const nextIndex = currentFileIndex + 1;
     if (nextIndex < uploadedFiles.length) {
@@ -207,11 +228,28 @@ const TranslatorApp = () => {
       sx={{
         display: "flex",
         alignItems: "center",
+        gap: 2,
         p: 2,
         borderBottom: 1,
         borderColor: "divider",
       }}
     >
+       {tabValue === 2 && (
+        <FormControl size="small" sx={{ width: 200 }}>
+          <InputLabel>Ngôn ngữ nhận dạng OCR</InputLabel>
+          <Select
+            value={ocrLanguage}
+            label="Ngôn ngữ nhận dạng OCR"
+            onChange={(e) => setOcrLanguage(e.target.value)}
+          >
+            {ocrLanguages.map((lang) => (
+              <MenuItem key={lang.code} value={lang.code}>
+                {lang.name}
+              </MenuItem>
+            ))}
+          </Select>
+        </FormControl>
+      )}
       <FormControl size="small" sx={{ width: 200 }}>
         <InputLabel>Ngôn ngữ muốn dịch</InputLabel>
         <Select
@@ -219,13 +257,15 @@ const TranslatorApp = () => {
           label="Ngôn ngữ muốn dịch"
           onChange={(e) => setTargetLanguage(e.target.value)}
         >
-          {languages.map((lang) => (
+          {translationLanguages.map((lang) => (
             <MenuItem key={lang.code} value={lang.code}>
               {lang.name}
             </MenuItem>
           ))}
         </Select>
       </FormControl>
+
+     
     </Box>
   );
 
