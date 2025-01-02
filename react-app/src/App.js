@@ -105,7 +105,7 @@ const TranslatorApp = () => {
     formData.append("file", file);
 
     try {
-        const url = new URL('http://localhost:8069/ocr/');
+        const url = new URL('http://123.24.142.99:8010/ocr/');
         url.searchParams.append('lang', ocrLanguage);
 
         console.log("Sending request to:", url.toString());
