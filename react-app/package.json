@@ -9,6 +9,7 @@
     "@mui/material": "^6.2.0",
     "cra-template": "1.2.0",
     "lucide-react": "^0.468.0",
+    "pdfjs-dist": "^3.11.174",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-scripts": "5.0.1",

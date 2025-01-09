@@ -21,6 +21,7 @@ import {
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import CancelIcon from '@mui/icons-material/Cancel';
+import FilePreview from "./FileReview";
 
 const TranslatorApp = () => {
   // Languages for translation
@@ -415,6 +416,10 @@ const TranslatorApp = () => {
       </Box>
   
       <Grid container spacing={2}>
+        <Grid item xs={12}>
+          <FilePreview file={uploadedFiles[currentFileIndex]} />
+        </Grid>
+        
         <Grid item xs={6}>
           <TextField
             fullWidth
