@@ -24,7 +24,6 @@ import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import CancelIcon from '@mui/icons-material/Cancel';
 import PDFViewer from './PDFViewer';
 import mammoth from 'mammoth';
-import html2pdf from 'html2pdf.js';
 // Initialize PDF.js worker
 pdfjs.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.js`;
 
