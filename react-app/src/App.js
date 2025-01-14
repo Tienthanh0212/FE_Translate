@@ -24,6 +24,7 @@ import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import CancelIcon from '@mui/icons-material/Cancel';
 import PDFViewer from './PDFViewer';
 import mammoth from 'mammoth';
+
 // Initialize PDF.js worker
 pdfjs.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.js`;
 
@@ -53,6 +54,7 @@ const TranslatorApp = () => {
   const [isPdfLoading, setIsPdfLoading] = useState(false);
   const [sourcePdfFile, setSourcePdfFile] = useState(null);
   const [translatedPdfUrl, setTranslatedPdfUrl] = useState(null);
+  const [useOpenAI, setUseOpenAI] = useState(false);
 
   const [textTabSourceText, setTextTabSourceText] = useState("");
   const [textTabTranslatedText, setTextTabTranslatedText] = useState("");
@@ -76,116 +78,116 @@ const TranslatorApp = () => {
   ];
 
   // Thêm hàm xử lý DOCX
-const convertDocxToImages = async (file) => {
-  const images = [];
-  
-  try {
-    // Đọc file DOCX
-    const buffer = await file.arrayBuffer();
-    const arrayBuffer = new Uint8Array(buffer);
+  const convertDocxToImages = async (file) => {
+    const images = [];
     
-    // Sử dụng mammoth để chuyển DOCX thành HTML
-    const result = await mammoth.convertToHtml({ arrayBuffer });
-    const html = result.value;
-    
-    // Tạo một div tạm thời để chứa nội dung HTML
-    const tempDiv = document.createElement('div');
-    tempDiv.innerHTML = html;
-    
-    // Tìm tất cả các đoạn văn bản (paragraphs)
-    const paragraphs = tempDiv.getElementsByTagName('p');
-    
-    // Tạo canvas cho mỗi trang
-    const canvas = document.createElement('canvas');
-    const ctx = canvas.getContext('2d');
-    canvas.width = 800; // Độ rộng cố định
-    const lineHeight = 20;
-    const linesPerPage = 40; // Số dòng trên mỗi trang
-    let currentPage = [];
-    let currentLineCount = 0;
-    
-    // Xử lý từng đoạn văn bản
-    for (let i = 0; i < paragraphs.length; i++) {
-      const text = paragraphs[i].textContent;
-      const words = text.split(' ');
-      let line = '';
+    try {
+      // Đọc file DOCX
+      const buffer = await file.arrayBuffer();
+      const arrayBuffer = new Uint8Array(buffer);
       
-      for (let j = 0; j < words.length; j++) {
-        const testLine = line + words[j] + ' ';
-        const metrics = ctx.measureText(testLine);
+      // Sử dụng mammoth để chuyển DOCX thành HTML
+      const result = await mammoth.convertToHtml({ arrayBuffer });
+      const html = result.value;
+      
+      // Tạo một div tạm thời để chứa nội dung HTML
+      const tempDiv = document.createElement('div');
+      tempDiv.innerHTML = html;
+      
+      // Tìm tất cả các đoạn văn bản (paragraphs)
+      const paragraphs = tempDiv.getElementsByTagName('p');
+      
+      // Tạo canvas cho mỗi trang
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      canvas.width = 800; // Độ rộng cố định
+      const lineHeight = 20;
+      const linesPerPage = 40; // Số dòng trên mỗi trang
+      let currentPage = [];
+      let currentLineCount = 0;
+      
+      // Xử lý từng đoạn văn bản
+      for (let i = 0; i < paragraphs.length; i++) {
+        const text = paragraphs[i].textContent;
+        const words = text.split(' ');
+        let line = '';
         
-        if (metrics.width > canvas.width - 40) {
+        for (let j = 0; j < words.length; j++) {
+          const testLine = line + words[j] + ' ';
+          const metrics = ctx.measureText(testLine);
+          
+          if (metrics.width > canvas.width - 40) {
+            currentPage.push(line);
+            currentLineCount++;
+            line = words[j] + ' ';
+            
+            if (currentLineCount >= linesPerPage) {
+              // Tạo ảnh cho trang hiện tại
+              const pageCanvas = document.createElement('canvas');
+              const pageCtx = pageCanvas.getContext('2d');
+              pageCanvas.width = canvas.width;
+              pageCanvas.height = lineHeight * linesPerPage + 40;
+              
+              // Vẽ nội dung lên canvas
+              pageCtx.fillStyle = 'white';
+              pageCtx.fillRect(0, 0, pageCanvas.width, pageCanvas.height);
+              pageCtx.fillStyle = 'black';
+              pageCtx.font = '14px Arial';
+              
+              currentPage.forEach((textLine, index) => {
+                pageCtx.fillText(textLine, 20, (index + 1) * lineHeight);
+              });
+              
+              // Chuyển canvas thành blob
+              const blob = await new Promise(resolve => pageCanvas.toBlob(resolve));
+              const imageFile = new File([blob], `page-${images.length + 1}.png`, { type: 'image/png' });
+              images.push(imageFile);
+              
+              // Reset cho trang mới
+              currentPage = [];
+              currentLineCount = 0;
+            }
+          } else {
+            line = testLine;
+          }
+        }
+        
+        if (line) {
           currentPage.push(line);
           currentLineCount++;
-          line = words[j] + ' ';
-          
-          if (currentLineCount >= linesPerPage) {
-            // Tạo ảnh cho trang hiện tại
-            const pageCanvas = document.createElement('canvas');
-            const pageCtx = pageCanvas.getContext('2d');
-            pageCanvas.width = canvas.width;
-            pageCanvas.height = lineHeight * linesPerPage + 40;
-            
-            // Vẽ nội dung lên canvas
-            pageCtx.fillStyle = 'white';
-            pageCtx.fillRect(0, 0, pageCanvas.width, pageCanvas.height);
-            pageCtx.fillStyle = 'black';
-            pageCtx.font = '14px Arial';
-            
-            currentPage.forEach((textLine, index) => {
-              pageCtx.fillText(textLine, 20, (index + 1) * lineHeight);
-            });
-            
-            // Chuyển canvas thành blob
-            const blob = await new Promise(resolve => pageCanvas.toBlob(resolve));
-            const imageFile = new File([blob], `page-${images.length + 1}.png`, { type: 'image/png' });
-            images.push(imageFile);
-            
-            // Reset cho trang mới
-            currentPage = [];
-            currentLineCount = 0;
-          }
-        } else {
-          line = testLine;
         }
-      }
-      
-      if (line) {
-        currentPage.push(line);
+        
+        // Thêm một dòng trống sau mỗi đoạn văn
+        currentPage.push('');
         currentLineCount++;
       }
       
-      // Thêm một dòng trống sau mỗi đoạn văn
-      currentPage.push('');
-      currentLineCount++;
+      // Xử lý trang cuối cùng nếu còn
+      if (currentPage.length > 0) {
+        const pageCanvas = document.createElement('canvas');
+        const pageCtx = pageCanvas.getContext('2d');
+        pageCanvas.width = canvas.width;
+        pageCanvas.height = lineHeight * linesPerPage + 40;
+        
+        pageCtx.fillStyle = 'white';
+        pageCtx.fillRect(0, 0, pageCanvas.width, pageCanvas.height);
+        pageCtx.fillStyle = 'black';
+        pageCtx.font = '14px Arial';
+        
+        currentPage.forEach((textLine, index) => {
+          pageCtx.fillText(textLine, 20, (index + 1) * lineHeight);
+        });
+        
+        const blob = await new Promise(resolve => pageCanvas.toBlob(resolve));
+        const imageFile = new File([blob], `page-${images.length + 1}.png`, { type: 'image/png' });
+        images.push(imageFile);
+      }
+    } catch (error) {
+      console.error('Error converting DOCX to images:', error);
     }
     
-    // Xử lý trang cuối cùng nếu còn
-    if (currentPage.length > 0) {
-      const pageCanvas = document.createElement('canvas');
-      const pageCtx = pageCanvas.getContext('2d');
-      pageCanvas.width = canvas.width;
-      pageCanvas.height = lineHeight * linesPerPage + 40;
-      
-      pageCtx.fillStyle = 'white';
-      pageCtx.fillRect(0, 0, pageCanvas.width, pageCanvas.height);
-      pageCtx.fillStyle = 'black';
-      pageCtx.font = '14px Arial';
-      
-      currentPage.forEach((textLine, index) => {
-        pageCtx.fillText(textLine, 20, (index + 1) * lineHeight);
-      });
-      
-      const blob = await new Promise(resolve => pageCanvas.toBlob(resolve));
-      const imageFile = new File([blob], `page-${images.length + 1}.png`, { type: 'image/png' });
-      images.push(imageFile);
-    }
-  } catch (error) {
-    console.error('Error converting DOCX to images:', error);
-  }
-  
-  return images;
-};
+    return images;
+  };
 
   const downloadAndProcessPdf = async (url) => {
     setIsPdfLoading(true);
@@ -249,6 +251,7 @@ const convertDocxToImages = async (file) => {
 
     return validFiles;
   };
+
   const processOCR = async (file) => {
     if (!file) return;
   
@@ -259,20 +262,21 @@ const convertDocxToImages = async (file) => {
     setCurrentPage(0);
     setShowUploadInterface(false);
     setDocumentTabSourceText("");
-    setSourcePdfFile(file);  // Set file gốc trực tiếp mà không cần convert
+    setSourcePdfFile(file);
     setTranslatedPdfUrl(null);
   
     try {
       let filesToProcess = [];
       
-      // Xử lý dựa vào loại file
       if (file.type === 'application/pdf') {
         setDocumentTabTranslatedText("Đang xử lý PDF...");
-        filesToProcess = await convertPdfToImages(file);
+        const allImages = await convertPdfToImages(file);
+        filesToProcess = useOpenAI ? allImages : allImages.slice(0, 3);
         console.log('Converted PDF to images:', filesToProcess.length);
       } else if (file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
         setDocumentTabTranslatedText("Đang chuyển đổi DOCX sang ảnh...");
-        filesToProcess = await convertDocxToImages(file);
+        const allImages = await convertDocxToImages(file);
+        filesToProcess = useOpenAI ? allImages : allImages.slice(0, 3);
         console.log('Converted DOCX to images:', filesToProcess.length);
       } else if (file.type === 'image/jpeg' || file.type === 'image/png') {
         filesToProcess = [file];
@@ -292,9 +296,9 @@ const convertDocxToImages = async (file) => {
       const url = new URL('http://123.24.142.99:8010/ocr/');
       url.searchParams.append('in_lang', ocrLanguage);
       url.searchParams.append('out_lang', targetLanguage);
-      url.searchParams.append('use_openai', 'false');
+      url.searchParams.append('use_openai', useOpenAI.toString());
   
-      setDocumentTabTranslatedText("Đang xử lý OCR...");
+      setDocumentTabTranslatedText(useOpenAI ? "Đang xử lý OCR..." : "Đang xử lý OCR (chỉ 3 trang đầu)...");
       console.log("Sending request to:", url.toString());
       console.log("Number of files being sent:", filesToProcess.length);
   
@@ -317,7 +321,6 @@ const convertDocxToImages = async (file) => {
         throw new Error(errorMessage);
       }
   
-      // Xử lý response từ API
       const responseData = await response.json();
       console.log("Response data:", responseData);
   
@@ -331,9 +334,9 @@ const convertDocxToImages = async (file) => {
         await downloadAndProcessPdf(downloadUrl);
         setDocumentTabTranslatedText("Dịch hoàn tất");
       } else {
-        throw new Error('Không nhận được kết quả từ server');
+        throw new Error('Không nhận được kết quả từ server')
+        // ... tiếp theo phần trước
       }
-  
     } catch (error) {
       if (error.name === 'AbortError') {
         console.log('OCR processing was cancelled');
@@ -421,20 +424,33 @@ const convertDocxToImages = async (file) => {
       }}
     >
       {tabValue === 2 && (
-        <FormControl size="small" sx={{ width: 200 }}>
-          <InputLabel>Ngôn ngữ nhận dạng OCR</InputLabel>
-          <Select
-            value={ocrLanguage}
-            label="Ngôn ngữ nhận dạng OCR"
-            onChange={(e) => setOcrLanguage(e.target.value)}
-          >
-            {ocrLanguages.map((lang) => (
-              <MenuItem key={lang.code} value={lang.code}>
-                {lang.name}
-              </MenuItem>
-            ))}
-          </Select>
-        </FormControl>
+        <>
+          <FormControl size="small" sx={{ width: 200 }}>
+            <InputLabel>Ngôn ngữ nhận dạng OCR</InputLabel>
+            <Select
+              value={ocrLanguage}
+              label="Ngôn ngữ nhận dạng OCR"
+              onChange={(e) => setOcrLanguage(e.target.value)}
+            >
+              {ocrLanguages.map((lang) => (
+                <MenuItem key={lang.code} value={lang.code}>
+                  {lang.name}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+          <FormControl size="small" sx={{ width: 200 }}>
+            <InputLabel>Sử dụng OpenAI</InputLabel>
+            <Select
+              value={useOpenAI}
+              label="Sử dụng OpenAI"
+              onChange={(e) => setUseOpenAI(e.target.value)}
+            >
+              <MenuItem value={false}>Không (chỉ 3 trang đầu)</MenuItem>
+              <MenuItem value={true}>Có (toàn bộ trang)</MenuItem>
+            </Select>
+          </FormControl>
+        </>
       )}
       <FormControl size="small" sx={{ width: 200 }}>
         <InputLabel>Ngôn ngữ muốn dịch</InputLabel>
@@ -759,4 +775,3 @@ const convertDocxToImages = async (file) => {
 };
 
 export default TranslatorApp;
-          
