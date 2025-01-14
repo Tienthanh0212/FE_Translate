@@ -54,7 +54,6 @@ const TranslatorApp = () => {
   const [isPdfLoading, setIsPdfLoading] = useState(false);
   const [sourcePdfFile, setSourcePdfFile] = useState(null);
   const [translatedPdfUrl, setTranslatedPdfUrl] = useState(null);
-  const [useOpenAI, setUseOpenAI] = useState(false);
 
   const [textTabSourceText, setTextTabSourceText] = useState("");
   const [textTabTranslatedText, setTextTabTranslatedText] = useState("");
@@ -271,12 +270,14 @@ const TranslatorApp = () => {
       if (file.type === 'application/pdf') {
         setDocumentTabTranslatedText("Đang xử lý PDF...");
         const allImages = await convertPdfToImages(file);
-        filesToProcess = useOpenAI ? allImages : allImages.slice(0, 3);
+        // Luôn lấy 3 trang đầu
+        filesToProcess = allImages.slice(0, 3);
         console.log('Converted PDF to images:', filesToProcess.length);
       } else if (file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
         setDocumentTabTranslatedText("Đang chuyển đổi DOCX sang ảnh...");
         const allImages = await convertDocxToImages(file);
-        filesToProcess = useOpenAI ? allImages : allImages.slice(0, 3);
+        // Luôn lấy 3 trang đầu
+        filesToProcess = allImages.slice(0, 3);
         console.log('Converted DOCX to images:', filesToProcess.length);
       } else if (file.type === 'image/jpeg' || file.type === 'image/png') {
         filesToProcess = [file];
@@ -296,11 +297,12 @@ const TranslatorApp = () => {
       const url = new URL('http://123.24.142.99:8010/ocr/');
       url.searchParams.append('in_lang', ocrLanguage);
       url.searchParams.append('out_lang', targetLanguage);
-      url.searchParams.append('use_openai', useOpenAI.toString());
+      url.searchParams.append('use_openai', 'false'); // Luôn set false
   
-      setDocumentTabTranslatedText(useOpenAI ? "Đang xử lý OCR..." : "Đang xử lý OCR (chỉ 3 trang đầu)...");
+      setDocumentTabTranslatedText("Đang xử lý OCR...");
       console.log("Sending request to:", url.toString());
       console.log("Number of files being sent:", filesToProcess.length);
+
   
       const response = await fetch(url, {
         method: "POST",
@@ -356,13 +358,6 @@ const TranslatorApp = () => {
       setIsProcessing(false);
       setIsPdfLoading(false);
       setDocumentTabTranslatedText("Đã hủy quá trình dịch");
-    }
-  };
-
-  const handlePageNavigation = (pageIndex) => {
-    if (pageIndex >= 0 && pageIndex < pageTexts.length) {
-      setCurrentPage(pageIndex);
-      setDocumentTabSourceText(pageTexts[pageIndex]);
     }
   };
 
@@ -437,17 +432,6 @@ const TranslatorApp = () => {
                   {lang.name}
                 </MenuItem>
               ))}
-            </Select>
-          </FormControl>
-          <FormControl size="small" sx={{ width: 200 }}>
-            <InputLabel>Sử dụng OpenAI</InputLabel>
-            <Select
-              value={useOpenAI}
-              label="Sử dụng OpenAI"
-              onChange={(e) => setUseOpenAI(e.target.value)}
-            >
-              <MenuItem value={false}>Không (chỉ 3 trang đầu)</MenuItem>
-              <MenuItem value={true}>Có (toàn bộ trang)</MenuItem>
             </Select>
           </FormControl>
         </>
