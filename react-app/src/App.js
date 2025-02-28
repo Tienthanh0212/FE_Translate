@@ -35,7 +35,7 @@ const TranslatorApp = () => {
     { code: "en", name: "Tiếng Anh" },
     { code: "zh", name: "Tiếng Trung" },
     { code: "ja", name: "Tiếng Nhật" },
-    { code: "ko", name: "Tiếng Hàn" },
+    // { code: "korean", name: "Tiếng Hàn" },
     { code: "fr", name: "Tiếng Pháp" },
     { code: "de", name: "Tiếng Đức" },
   ];
@@ -66,7 +66,9 @@ const TranslatorApp = () => {
   const [pageTexts, setPageTexts] = useState([]);
   const [currentPage, setCurrentPage] = useState(0);
   const fileInputRef = useRef(null);
+  const [currentProcessingFile, setCurrentProcessingFile] = useState(null); 
   const abortControllerRef = useRef(null);
+  
 
   const SUPPORTED_FILE_TYPES = [
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -93,94 +95,116 @@ const TranslatorApp = () => {
       const tempDiv = document.createElement('div');
       tempDiv.innerHTML = html;
       
-      // Tìm tất cả các đoạn văn bản (paragraphs)
-      const paragraphs = tempDiv.getElementsByTagName('p');
+      // Tìm tất cả các elements (không chỉ paragraphs)
+      const elements = tempDiv.children;
       
-      // Tạo canvas cho mỗi trang
+      // Thiết lập canvas với kích thước A4
       const canvas = document.createElement('canvas');
       const ctx = canvas.getContext('2d');
-      canvas.width = 800; // Độ rộng cố định
-      const lineHeight = 20;
-      const linesPerPage = 40; // Số dòng trên mỗi trang
-      let currentPage = [];
-      let currentLineCount = 0;
       
-      // Xử lý từng đoạn văn bản
-      for (let i = 0; i < paragraphs.length; i++) {
-        const text = paragraphs[i].textContent;
-        const words = text.split(' ');
-        let line = '';
-        
-        for (let j = 0; j < words.length; j++) {
-          const testLine = line + words[j] + ' ';
-          const metrics = ctx.measureText(testLine);
+      // Kích thước A4 ở 300 DPI
+      canvas.width = 2480;  // 8.27 inches * 300 DPI
+      canvas.height = 3508; // 11.69 inches * 300 DPI
+      
+      // Thiết lập font và style
+      ctx.font = '36px Arial'; // Tăng font size để rõ ràng hơn ở 300 DPI
+      const lineHeight = 48;
+      const margin = 100;
+      const maxWidth = canvas.width - (margin * 2);
+      
+      let currentPage = [];
+      let currentY = margin;
+      const maxY = canvas.height - margin;
+      
+      // Hàm tạo trang mới
+      const createNewPage = async () => {
+        if (currentPage.length > 0) {
+          // Tạo canvas mới cho trang
+          const pageCanvas = document.createElement('canvas');
+          const pageCtx = pageCanvas.getContext('2d');
+          pageCanvas.width = canvas.width;
+          pageCanvas.height = canvas.height;
           
-          if (metrics.width > canvas.width - 40) {
-            currentPage.push(line);
-            currentLineCount++;
-            line = words[j] + ' ';
+          // Vẽ background trắng
+          pageCtx.fillStyle = 'white';
+          pageCtx.fillRect(0, 0, pageCanvas.width, pageCanvas.height);
+          
+          // Vẽ nội dung
+          pageCtx.font = ctx.font;
+          pageCtx.fillStyle = 'black';
+          
+          currentPage.forEach(item => {
+            pageCtx.fillText(item.text, item.x, item.y);
+          });
+          
+          // Chuyển canvas thành blob
+          const blob = await new Promise(resolve => pageCanvas.toBlob(resolve, 'image/png'));
+          const imageFile = new File([blob], `page-${images.length + 1}.png`, { type: 'image/png' });
+          images.push(imageFile);
+          
+          // Reset trang mới
+          currentPage = [];
+          currentY = margin;
+        }
+      };
+      
+      // Xử lý từng element
+      for (let i = 0; i < elements.length; i++) {
+        const element = elements[i];
+        const text = element.textContent.trim();
+        
+        if (text) {
+          // Chia text thành các dòng dựa trên maxWidth
+          const words = text.split(' ');
+          let currentLine = '';
+          
+          for (let j = 0; j < words.length; j++) {
+            const word = words[j];
+            const testLine = currentLine + word + ' ';
+            const metrics = ctx.measureText(testLine);
             
-            if (currentLineCount >= linesPerPage) {
-              // Tạo ảnh cho trang hiện tại
-              const pageCanvas = document.createElement('canvas');
-              const pageCtx = pageCanvas.getContext('2d');
-              pageCanvas.width = canvas.width;
-              pageCanvas.height = lineHeight * linesPerPage + 40;
+            if (metrics.width > maxWidth) {
+              // Thêm dòng hiện tại vào trang
+              if (currentY + lineHeight > maxY) {
+                await createNewPage();
+              }
               
-              // Vẽ nội dung lên canvas
-              pageCtx.fillStyle = 'white';
-              pageCtx.fillRect(0, 0, pageCanvas.width, pageCanvas.height);
-              pageCtx.fillStyle = 'black';
-              pageCtx.font = '14px Arial';
-              
-              currentPage.forEach((textLine, index) => {
-                pageCtx.fillText(textLine, 20, (index + 1) * lineHeight);
+              currentPage.push({
+                text: currentLine,
+                x: margin,
+                y: currentY
               });
               
-              // Chuyển canvas thành blob
-              const blob = await new Promise(resolve => pageCanvas.toBlob(resolve));
-              const imageFile = new File([blob], `page-${images.length + 1}.png`, { type: 'image/png' });
-              images.push(imageFile);
-              
-              // Reset cho trang mới
-              currentPage = [];
-              currentLineCount = 0;
+              currentY += lineHeight;
+              currentLine = word + ' ';
+            } else {
+              currentLine = testLine;
             }
-          } else {
-            line = testLine;
           }
+          
+          // Xử lý dòng cuối cùng của đoạn
+          if (currentLine) {
+            if (currentY + lineHeight > maxY) {
+              await createNewPage();
+            }
+            
+            currentPage.push({
+              text: currentLine,
+              x: margin,
+              y: currentY
+            });
+            
+            currentY += lineHeight;
+          }
+          
+          // Thêm khoảng trống giữa các đoạn
+          currentY += lineHeight / 2;
         }
-        
-        if (line) {
-          currentPage.push(line);
-          currentLineCount++;
-        }
-        
-        // Thêm một dòng trống sau mỗi đoạn văn
-        currentPage.push('');
-        currentLineCount++;
       }
       
-      // Xử lý trang cuối cùng nếu còn
-      if (currentPage.length > 0) {
-        const pageCanvas = document.createElement('canvas');
-        const pageCtx = pageCanvas.getContext('2d');
-        pageCanvas.width = canvas.width;
-        pageCanvas.height = lineHeight * linesPerPage + 40;
-        
-        pageCtx.fillStyle = 'white';
-        pageCtx.fillRect(0, 0, pageCanvas.width, pageCanvas.height);
-        pageCtx.fillStyle = 'black';
-        pageCtx.font = '14px Arial';
-        
-        currentPage.forEach((textLine, index) => {
-          pageCtx.fillText(textLine, 20, (index + 1) * lineHeight);
-        });
-        
-        const blob = await new Promise(resolve => pageCanvas.toBlob(resolve));
-        const imageFile = new File([blob], `page-${images.length + 1}.png`, { type: 'image/png' });
-        images.push(imageFile);
-      }
+      // Xử lý trang cuối cùng
+      await createNewPage();
+      
     } catch (error) {
       console.error('Error converting DOCX to images:', error);
     }
@@ -250,8 +274,18 @@ const TranslatorApp = () => {
 
     return validFiles;
   };
+  const handleTargetLanguageChange = (e) => {
+    const newTargetLanguage = e.target.value;
+    setTargetLanguage(newTargetLanguage);
+    
+    // Only process OCR if we're in document tab, have a file, and not in upload interface
+    if (tabValue === 2 && currentProcessingFile && !showUploadInterface) {
+      processOCR(currentProcessingFile, newTargetLanguage);
+    }
+  };
 
-  const processOCR = async (file) => {
+
+  const processOCR = async (file, targetLang = targetLanguage) => {
     if (!file) return;
   
     abortControllerRef.current = new AbortController();
@@ -263,6 +297,7 @@ const TranslatorApp = () => {
     setDocumentTabSourceText("");
     setSourcePdfFile(file);
     setTranslatedPdfUrl(null);
+    setCurrentProcessingFile(file); // Lưu file đang xử lý
   
     try {
       let filesToProcess = [];
@@ -270,15 +305,11 @@ const TranslatorApp = () => {
       if (file.type === 'application/pdf') {
         setDocumentTabTranslatedText("Đang xử lý PDF...");
         const allImages = await convertPdfToImages(file);
-        // Luôn lấy 3 trang đầu
         filesToProcess = allImages.slice(0, 3);
-        console.log('Converted PDF to images:', filesToProcess.length);
       } else if (file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
         setDocumentTabTranslatedText("Đang chuyển đổi DOCX sang ảnh...");
         const allImages = await convertDocxToImages(file);
-        // Luôn lấy 3 trang đầu
         filesToProcess = allImages.slice(0, 3);
-        console.log('Converted DOCX to images:', filesToProcess.length);
       } else if (file.type === 'image/jpeg' || file.type === 'image/png') {
         filesToProcess = [file];
       } else {
@@ -296,21 +327,16 @@ const TranslatorApp = () => {
   
       const url = new URL('http://123.24.142.99:8010/ocr/');
       url.searchParams.append('in_lang', ocrLanguage);
-      url.searchParams.append('out_lang', targetLanguage);
-      url.searchParams.append('use_openai', 'false'); // Luôn set false
+      url.searchParams.append('out_lang', targetLang); // Sử dụng targetLang từ tham số
+      url.searchParams.append('use_openai', 'false');
   
       setDocumentTabTranslatedText("Đang xử lý OCR...");
-      console.log("Sending request to:", url.toString());
-      console.log("Number of files being sent:", filesToProcess.length);
-
   
       const response = await fetch(url, {
         method: "POST",
         body: formData,
         signal: abortControllerRef.current.signal,
       });
-  
-      console.log("Response status:", response.status);
   
       if (!response.ok) {
         let errorMessage = "Có lỗi xảy ra trong quá trình xử lý OCR";
@@ -324,7 +350,6 @@ const TranslatorApp = () => {
       }
   
       const responseData = await response.json();
-      console.log("Response data:", responseData);
   
       if (responseData.status === 200 && responseData.data.file_path) {
         const filePath = responseData.data.file_path;
@@ -336,8 +361,7 @@ const TranslatorApp = () => {
         await downloadAndProcessPdf(downloadUrl);
         setDocumentTabTranslatedText("Dịch hoàn tất");
       } else {
-        throw new Error('Không nhận được kết quả từ server')
-        // ... tiếp theo phần trước
+        throw new Error('Không nhận được kết quả từ server');
       }
     } catch (error) {
       if (error.name === 'AbortError') {
@@ -419,29 +443,27 @@ const TranslatorApp = () => {
       }}
     >
       {tabValue === 2 && (
-        <>
-          <FormControl size="small" sx={{ width: 200 }}>
-            <InputLabel>Ngôn ngữ nhận dạng OCR</InputLabel>
-            <Select
-              value={ocrLanguage}
-              label="Ngôn ngữ nhận dạng OCR"
-              onChange={(e) => setOcrLanguage(e.target.value)}
-            >
-              {ocrLanguages.map((lang) => (
-                <MenuItem key={lang.code} value={lang.code}>
-                  {lang.name}
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
-        </>
+        <FormControl size="small" sx={{ width: 200 }}>
+          <InputLabel>Ngôn ngữ nhận dạng OCR</InputLabel>
+          <Select
+            value={ocrLanguage}
+            label="Ngôn ngữ nhận dạng OCR"
+            onChange={(e) => setOcrLanguage(e.target.value)}
+          >
+            {ocrLanguages.map((lang) => (
+              <MenuItem key={lang.code} value={lang.code}>
+                {lang.name}
+              </MenuItem>
+            ))}
+          </Select>
+        </FormControl>
       )}
       <FormControl size="small" sx={{ width: 200 }}>
         <InputLabel>Ngôn ngữ muốn dịch</InputLabel>
         <Select
           value={targetLanguage}
           label="Ngôn ngữ muốn dịch"
-          onChange={(e) => setTargetLanguage(e.target.value)}
+          onChange={handleTargetLanguageChange}
         >
           {translationLanguages.map((lang) => (
             <MenuItem key={lang.code} value={lang.code}>
@@ -557,49 +579,50 @@ const TranslatorApp = () => {
 
   const renderDocumentTextInterface = () => (
     <Box sx={{ p: 2 }}>
-      <Box
-        sx={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          mb: 2,
-        }}
-      >
-        <Typography variant="h6">
-          Tài liệu đã tải lên: {uploadedFiles[currentFileIndex]?.name}
-        </Typography>
-        <Box sx={{ display: 'flex', gap: 2 }}>
-          {isProcessing && (
-            <Button
-              variant="outlined"
-              color="error"
-              startIcon={<CancelIcon />}
-              onClick={cancelProcessing}
-              sx={{ textTransform: 'none' }}
-            >
-              Ngắt dịch
-            </Button>
-          )}
+    <Box
+      sx={{
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "center",
+        mb: 2,
+      }}
+    >
+      <Typography variant="h6">
+        Tài liệu đã tải lên: {uploadedFiles[currentFileIndex]?.name}
+      </Typography>
+      <Box sx={{ display: 'flex', gap: 2 }}>
+        {isProcessing && (
           <Button
             variant="outlined"
-            startIcon={<CloudUploadIcon />}
-            onClick={() => {
-              setShowUploadInterface(true);
-              setUploadedFiles([]);
-              setSourcePdfFile(null);
-              setTranslatedPdfUrl(null);
-              setIsPdfLoading(false);
-            }}
-            sx={{
-              textTransform: "none",
-              color: "#1967D2",
-              borderColor: "#1967D2",
-            }}
+            color="error"
+            startIcon={<CancelIcon />}
+            onClick={cancelProcessing}
+            sx={{ textTransform: 'none' }}
           >
-            Tải lên tài liệu khác
+            Ngắt dịch
           </Button>
-        </Box>
+        )}
+        <Button
+          variant="outlined"
+          startIcon={<CloudUploadIcon />}
+          onClick={() => {
+            setShowUploadInterface(true);
+            setUploadedFiles([]);
+            setSourcePdfFile(null);
+            setTranslatedPdfUrl(null);
+            setIsPdfLoading(false);
+            setCurrentProcessingFile(null); // Add this line to clear the current processing file
+          }}
+          sx={{
+            textTransform: "none",
+            color: "#1967D2",
+            borderColor: "#1967D2",
+          }}
+        >
+          Tải lên tài liệu khác
+        </Button>
       </Box>
+    </Box>
 
       <PDFViewer
         sourceFile={sourcePdfFile}
